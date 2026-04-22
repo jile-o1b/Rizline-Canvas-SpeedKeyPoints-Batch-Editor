@@ -2,7 +2,7 @@ import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import math
-#你好啊
+
 
 class RizlineSpeedTool:
     def __init__(self, root):
