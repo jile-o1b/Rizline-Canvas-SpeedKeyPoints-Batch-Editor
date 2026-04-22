@@ -1,6 +1,10 @@
 # Rizline Canvas SpeedKeyPoints Batch Editor
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<div align="center">
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)&nbsp;&nbsp;&nbsp;&nbsp;[![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+
+</div>
 
 一个用于 **Rizline 自制谱面** 的批量速度节点编辑工具。
 
