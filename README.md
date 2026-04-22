@@ -23,4 +23,4 @@
 2. 克隆本仓库或下载 `main.py`
 
 ```bash
-git clone https://github.com/你的用户名/Rizline-Canvas-SpeedKeyPoints-Batch-Editor.git
+git clone https://github.com/jile-o1b/Rizline-Canvas-SpeedKeyPoints-Batch-Editor.git
