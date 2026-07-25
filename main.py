@@ -1,4 +1,5 @@
 import json
+import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import math
@@ -156,6 +157,7 @@ class RizlineSpeedTool:
         file_frame.pack(fill="x", padx=10, pady=5)
         
         ttk.Button(file_frame, text="加载谱面文件", command=self.load_file).pack(side="left", padx=5)
+        ttk.Button(file_frame, text="重载谱面", command=self.reload_file).pack(side="left", padx=5)
         self.file_label = ttk.Label(file_frame, text="未加载文件")
         self.file_label.pack(side="left", padx=5)
         
@@ -306,13 +308,25 @@ class RizlineSpeedTool:
         
         if not file_path:
             return
-            
+
+        self._load_chart_file(file_path, is_reload=False)
+
+    def reload_file(self):
+        """重载当前已加载的谱面文件"""
+        if not self.current_file:
+            messagebox.showinfo("提示", "当前没有已加载的谱面文件，请先加载谱面。")
+            return
+
+        self._load_chart_file(self.current_file, is_reload=True)
+
+    def _load_chart_file(self, file_path, is_reload=False):
+        """内部通用加载/重载谱面文件逻辑"""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 self.chart_data = json.load(f)
             
             self.current_file = file_path
-            filename = file_path.split('/')[-1]
+            filename = os.path.basename(file_path)
             self.file_label.config(text=f"已加载: {filename}")
             short_path = file_path if len(file_path) < 50 else "..." + file_path[-47:]
             self.path_label.config(text=short_path)
@@ -322,13 +336,26 @@ class RizlineSpeedTool:
                 canvas_options = [f"画布 {i}" for i in range(self.canvas_count)]
                 self.canvas_combo['values'] = canvas_options
                 if canvas_options:
-                    self.canvas_combo.current(0)
+                    current_index = self.get_current_canvas_index()
+                    if current_index is None or current_index >= self.canvas_count:
+                        current_index = 0
+                    self.canvas_combo.current(current_index)
                     self.view_speed_points()
+                else:
+                    self.canvas_var.set("")
+                    for item in self.tree.get_children():
+                        self.tree.delete(item)
+            else:
+                self.canvas_count = 0
+                self.canvas_combo['values'] = []
+                self.canvas_var.set("")
+                for item in self.tree.get_children():
+                    self.tree.delete(item)
                     
-            self.status_label.config(text=f"加载成功，包含 {self.canvas_count} 个画布")
+            self.status_label.config(text=f"{'重载成功' if is_reload else '加载成功'}，包含 {self.canvas_count} 个画布")
             
         except Exception as e:
-            messagebox.showerror("错误", f"加载文件失败: {str(e)}")
+            messagebox.showerror("错误", f"{'重载' if is_reload else '加载'}文件失败: {str(e)}")
     
     def preview_easing(self):
         """预览缓动曲线"""
@@ -407,16 +434,18 @@ class RizlineSpeedTool:
             if segments < 1:
                 messagebox.showerror("错误", "段数必须大于等于1")
                 return None
-            
-            time_step = (end_t - start_t) / segments
+
+            beat_span = end_t - start_t
+            total_segments = max(1, int(beat_span * segments))
+            time_step = beat_span / total_segments if total_segments > 0 else 0
             
             nodes = []
-            for i in range(segments + 1):
+            for i in range(total_segments + 1):
                 t = start_t + i * time_step
-                if i == segments:
+                if i == total_segments:
                     t = end_t
                 
-                linear_progress = i / segments
+                linear_progress = i / total_segments if total_segments > 0 else 0
                 eased_progress = self.apply_easing(linear_progress, category, style)
                 v = start_v + (end_v - start_v) * eased_progress
                 
@@ -553,7 +582,7 @@ class RizlineSpeedTool:
         added_count = len(filtered_nodes)
         
         self.status_label.config(
-            text=f"✅ 已添加 {added_count} 个新节点（{category} {style}，分成 {segments} 段），"
+            text=f"已添加 {added_count} 个新节点（{category} {style}，分成 {segments} 段），"
                  f"跳过 {conflict_count} 个冲突节点，现有 {len(all_points)} 个节点。记得保存！"
         )
     
@@ -577,7 +606,7 @@ class RizlineSpeedTool:
             with open(self.current_file, 'w', encoding='utf-8') as f:
                 json.dump(self.chart_data, f, indent=2, ensure_ascii=False)
             
-            self.status_label.config(text=f"✅ 保存成功: {self.current_file}")
+            self.status_label.config(text=f"保存成功: {self.current_file}")
             messagebox.showinfo("成功", "文件保存成功！")
             
         except Exception as e:
