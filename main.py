@@ -504,6 +504,24 @@ class RizlineSpeedTool:
             text=f"预览：{category} {style}，节拍区间 {start_t:.2f}-{end_t:.2f} 分成 {segments} 段，添加 {len(new_nodes)} 个节点"
         )
     
+    def recalculate_floor_positions(self, points):
+        """根据时间顺序重新计算所有节点的 floorPosition"""
+        if not points:
+            return []
+        
+        sorted_points = sorted(points, key=lambda x: x["time"])
+        if not sorted_points:
+            return []
+        
+        sorted_points[0]["floorPosition"] = 0.0
+        for i in range(1, len(sorted_points)):
+            prev = sorted_points[i - 1]
+            curr = sorted_points[i]
+            time_diff_sec = self.tick_to_seconds(curr["time"] - prev["time"])
+            curr["floorPosition"] = prev["floorPosition"] + time_diff_sec * prev["value"]
+        
+        return sorted_points
+    
     def add_nodes(self):
         """批量添加速度节点"""
         canvas_idx = self.get_current_canvas_index()
@@ -519,7 +537,7 @@ class RizlineSpeedTool:
         if not new_nodes:
             return
         
-        existing_points = self.chart_data["canvasMoves"][canvas_idx]["speedKeyPoints"]
+        existing_points = list(self.chart_data["canvasMoves"][canvas_idx]["speedKeyPoints"])
         
         # 冲突检测
         conflict_times = set()
@@ -528,18 +546,7 @@ class RizlineSpeedTool:
                 if abs(new_node["time"] - existing_node["time"]) < 0.000001:
                     conflict_times.add(existing_node["time"])
         
-        # 过滤冲突节点
-        filtered_nodes = []
-        for node in new_nodes:
-            is_conflict = False
-            for conflict_time in conflict_times:
-                if abs(node["time"] - conflict_time) < 0.000001:
-                    is_conflict = True
-                    break
-            if not is_conflict:
-                filtered_nodes.append(node)
-        
-        # 显示冲突提示
+        overwrite_conflicts = False
         if conflict_times:
             conflict_list = []
             for t in sorted(conflict_times):
@@ -548,29 +555,51 @@ class RizlineSpeedTool:
                     t_str = t_str[:-2]
                 conflict_list.append(t_str)
             
-            messagebox.showinfo(
-                "节点冲突", 
-                f"以下节拍点已有节点，已自动保留原节点：\n{', '.join(conflict_list)}\n\n(共 {len(conflict_times)} 个冲突)"
+            overwrite_conflicts = messagebox.askyesnocancel(
+                "节点冲突",
+                f"以下节拍点已有节点：\n{', '.join(conflict_list)}\n\n是否继续覆盖这些冲突节点？\n\n选择“是”覆盖，选择“否/取消”停止添加。"
             )
+            if overwrite_conflicts is not True:
+                self.status_label.config(text="已取消添加，保留原节点")
+                return
         
-        if not filtered_nodes:
-            messagebox.showinfo("提示", "所有新节点都与现有节点冲突，没有添加任何节点")
+        # 过滤/覆盖冲突节点
+        kept_existing_points = []
+        new_conflict_nodes = []
+        new_non_conflict_nodes = []
+        for node in new_nodes:
+            is_conflict = False
+            for conflict_time in conflict_times:
+                if abs(node["time"] - conflict_time) < 0.000001:
+                    is_conflict = True
+                    break
+            if is_conflict:
+                new_conflict_nodes.append(node)
+            else:
+                new_non_conflict_nodes.append(node)
+        
+        for existing_point in existing_points:
+            is_conflict = False
+            for conflict_time in conflict_times:
+                if abs(existing_point["time"] - conflict_time) < 0.000001:
+                    is_conflict = True
+                    break
+            if not is_conflict or not overwrite_conflicts:
+                kept_existing_points.append(existing_point)
+        
+        if overwrite_conflicts:
+            all_points = kept_existing_points + new_conflict_nodes + new_non_conflict_nodes
+            added_count = len(new_conflict_nodes) + len(new_non_conflict_nodes)
+        else:
+            all_points = kept_existing_points + new_non_conflict_nodes
+            added_count = len(new_non_conflict_nodes)
+        
+        if not all_points:
+            messagebox.showinfo("提示", "没有可保存的节点")
             self.view_speed_points()
             return
         
-        # 合并并排序
-        all_points = existing_points + filtered_nodes
-        all_points.sort(key=lambda x: x["time"])
-        
-        # 重新计算 floorPosition
-        if all_points:
-            all_points[0]["floorPosition"] = 0.0
-            for i in range(1, len(all_points)):
-                prev = all_points[i-1]
-                curr = all_points[i]
-                time_diff_sec = self.tick_to_seconds(curr["time"] - prev["time"])
-                curr["floorPosition"] = prev["floorPosition"] + time_diff_sec * prev["value"]
-        
+        all_points = self.recalculate_floor_positions(all_points)
         self.chart_data["canvasMoves"][canvas_idx]["speedKeyPoints"] = all_points
         
         self.view_speed_points()
@@ -579,11 +608,11 @@ class RizlineSpeedTool:
         style = self.style_var.get()
         segments = int(self.density.get())
         conflict_count = len(conflict_times)
-        added_count = len(filtered_nodes)
         
+        action_desc = "覆盖" if overwrite_conflicts else "跳过"
         self.status_label.config(
             text=f"已添加 {added_count} 个新节点（{category} {style}，分成 {segments} 段），"
-                 f"跳过 {conflict_count} 个冲突节点，现有 {len(all_points)} 个节点。记得保存！"
+                 f"{action_desc} {conflict_count} 个冲突节点，现有 {len(all_points)} 个节点。记得保存！"
         )
     
     def save_file(self):
